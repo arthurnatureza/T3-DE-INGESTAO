@@ -1,0 +1,26 @@
+bundle:
+  name: sample_mflix_bronze
+
+include:
+  - jobs/*.yml
+
+variables:
+  table_prefix:
+    description: "Prefixo das tabelas/objetos criados no Databricks (dev_ em desenvolvimento, vazio em produção)"
+    default: "dev_"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-0367f631-de2c.cloud.databricks.com
+    variables:
+      table_prefix: "dev_"
+
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-0367f631-de2c.cloud.databricks.com
+    variables:
+      table_prefix: ""
