@@ -1,0 +1,47 @@
+resources:
+  jobs:
+    bronze_pipeline:
+      name: "${var.table_prefix}bronze_pipeline"
+      tasks:
+        - task_key: bronze_users
+          notebook_task:
+            notebook_path: ../notebooks/bronze_loader.py
+            base_parameters:
+              collection: users
+              load_type: full
+              table_prefix: "${var.table_prefix}"
+
+        - task_key: bronze_comments
+          notebook_task:
+            notebook_path: ../notebooks/bronze_loader.py
+            base_parameters:
+              collection: comments
+              load_type: incremental
+              watermark_field: date
+              table_prefix: "${var.table_prefix}"
+
+        # Testadas e prontas, só descomentar quando formos expandir:
+        # - task_key: bronze_theaters
+        #   notebook_task:
+        #     notebook_path: ../notebooks/bronze_loader.py
+        #     base_parameters:
+        #       collection: theaters
+        #       load_type: full
+        #       table_prefix: "${var.table_prefix}"
+        #
+        # - task_key: bronze_sessions
+        #   notebook_task:
+        #     notebook_path: ../notebooks/bronze_loader.py
+        #     base_parameters:
+        #       collection: sessions
+        #       load_type: full
+        #       table_prefix: "${var.table_prefix}"
+        #
+        # - task_key: bronze_movies
+        #   notebook_task:
+        #     notebook_path: ../notebooks/bronze_loader.py
+        #     base_parameters:
+        #       collection: movies
+        #       load_type: incremental
+        #       watermark_field: lastupdated
+        #       table_prefix: "${var.table_prefix}"
