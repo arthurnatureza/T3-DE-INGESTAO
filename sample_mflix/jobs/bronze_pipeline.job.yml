@@ -2,10 +2,11 @@ resources:
   jobs:
     bronze_pipeline:
       name: "${var.table_prefix}bronze_pipeline"
+      edit_mode: EDITABLE
       schedule:
         quartz_cron_expression: "0 0 6 * * ?"
         timezone_id: "America/Sao_Paulo"
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_pause_status}
 
       health:
         rules:

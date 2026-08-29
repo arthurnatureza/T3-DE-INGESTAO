@@ -13,6 +13,10 @@ variables:
     description: "Destinatário do alerta de falha dos jobs"
     default: "arthurnatureza@gmail.com"
 
+  schedule_pause_status:
+    description: "PAUSED em dev (não roda sozinho), UNPAUSED em prod"
+    default: "PAUSED"
+
 targets:
   dev:
     mode: development
@@ -21,10 +25,13 @@ targets:
       host: https://dbc-0367f631-de2c.cloud.databricks.com
     variables:
       table_prefix: "dev_"
+      schedule_pause_status: "PAUSED"
 
   prod:
     mode: production
     workspace:
       host: https://dbc-0367f631-de2c.cloud.databricks.com
+      root_path: /Workspace/Users/arthurnatureza@gmail.com/.bundle/${bundle.name}/${bundle.target}
     variables:
       table_prefix: ""
+      schedule_pause_status: "UNPAUSED"
