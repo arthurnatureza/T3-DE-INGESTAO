@@ -9,6 +9,10 @@ variables:
     description: "Prefixo das tabelas/objetos criados no Databricks (dev_ em desenvolvimento, vazio em produção)"
     default: "dev_"
 
+  notification_email:
+    description: "Destinatário do alerta de falha dos jobs"
+    default: "arthurnatureza@gmail.com"
+
 targets:
   dev:
     mode: development

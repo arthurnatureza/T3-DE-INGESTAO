@@ -1,0 +1,32 @@
+{
+  "movies": {
+    "load_type": "incremental",
+    "watermark_field": "lastupdated",
+    "exclude_fields": []
+  },
+  "comments": {
+    "load_type": "incremental",
+    "watermark_field": "date",
+    "exclude_fields": []
+  },
+  "users": {
+    "load_type": "full",
+    "watermark_field": null,
+    "exclude_fields": ["password"]
+  },
+  "theaters": {
+    "load_type": "full",
+    "watermark_field": null,
+    "exclude_fields": []
+  },
+  "sessions": {
+    "load_type": "full",
+    "watermark_field": null,
+    "exclude_fields": ["jwt"]
+  },
+  "embedded_movies": {
+    "load_type": "full",
+    "watermark_field": null,
+    "exclude_fields": ["plot_embedding"]
+  }
+}

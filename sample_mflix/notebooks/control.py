@@ -1,8 +1,11 @@
+from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, LongType, DoubleType, TimestampType, IntegerType, StructField, StructType
 import uuid
 
 TABLE_LOG = "sample_mflix.bronze.control_ingestion_log"
+
+spark = SparkSession.builder.getOrCreate()
 
 def get_ingestion_id() -> str:
     return str(uuid.uuid4())
@@ -31,13 +34,13 @@ def log_execution(collection, load_type, watermark_inicial, watermark_final, qtd
         StructField("end_time", TimestampType(), True),
         StructField("duracao_seg", IntegerType(), True),
         StructField("status", StringType(), True),
+        StructField("error_message", StringType(), True),
         StructField("pct_nulos_source_id", DoubleType(), True),
         StructField("qtd_duplicados_source_id", LongType(), True),
-        StructField("error_message", StringType(), True),
     ])
     duracao_seg = int ((end_time - start_time).total_seconds())
 
-    row = [(_ingestion_id, collection, load_type, watermark_inicial, watermark_final, qtd_lida_origem, qtd_gravada_destino, start_time, end_time, duracao_seg, status, pct_nulos_source_id, qtd_duplicados_source_id, error_message)]
+    row = [(_ingestion_id, collection, load_type, watermark_inicial, watermark_final, qtd_lida_origem, qtd_gravada_destino, start_time, end_time, duracao_seg, status, error_message, pct_nulos_source_id, qtd_duplicados_source_id)]
 
     df = spark.createDataFrame(row, schema=SCHEMA)
     df.write.mode("append").saveAsTable(TABLE_LOG)
