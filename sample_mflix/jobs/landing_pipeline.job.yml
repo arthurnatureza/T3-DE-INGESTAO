@@ -2,6 +2,7 @@ resources:
   jobs:
     landing_pipeline:
       name: "${var.table_prefix}landing_pipeline"
+      edit_mode: EDITABLE
 
       health:
         rules:
