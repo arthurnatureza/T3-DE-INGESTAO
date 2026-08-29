@@ -35,6 +35,7 @@ resources:
             notebook_path: ../notebooks/mongo-extractor.ipynb
           depends_on:
             - task_key: start_pipeline
+              outcome: "true"
         
         - task_key: end_pipeline
           condition_task:
