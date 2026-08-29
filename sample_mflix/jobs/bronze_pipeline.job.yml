@@ -41,6 +41,7 @@ resources:
               collection: movies
           depends_on:
             - task_key: start_pipeline
+              outcome: "true"
 
         - task_key: bronze_comments
           max_retries: 1
@@ -50,6 +51,7 @@ resources:
               collection: comments
           depends_on:
             - task_key: start_pipeline
+              outcome: "true"
 
         - task_key: bronze_users
           max_retries: 1
@@ -59,6 +61,7 @@ resources:
               collection: users
           depends_on:
             - task_key: start_pipeline
+              outcome: "true"
 
         - task_key: bronze_theaters
           max_retries: 1
@@ -68,6 +71,7 @@ resources:
               collection: theaters
           depends_on:
             - task_key: start_pipeline
+              outcome: "true"
 
         - task_key: bronze_sessions
           max_retries: 1
@@ -77,6 +81,7 @@ resources:
               collection: sessions
           depends_on:
             - task_key: start_pipeline
+              outcome: "true"
 
         - task_key: bronze_embedded_movies
           max_retries: 1
@@ -86,6 +91,7 @@ resources:
               collection: embedded_movies
           depends_on:
             - task_key: start_pipeline
+              outcome: "true"
 
         - task_key: resumo
           depends_on:
