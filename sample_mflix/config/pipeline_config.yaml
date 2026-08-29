@@ -1,0 +1,29 @@
+# Configuração global da pipeline. Nada de credencial aqui — a URI do Mongo
+# vem de dbutils.secrets (scope conn-db, key cnn-mongodb-sampleflix).
+# Parâmetros por coleção ficam em collections.json.
+
+database: sample_mflix
+catalog: sample_mflix
+
+landing_volume: /Volumes/sample_mflix/landing/mongo
+bronze_schema: sample_mflix.bronze
+control_table: sample_mflix.bronze.control_ingestion_log
+quarantine_table: quarentena
+
+# Extração (landing)
+extract:
+  batch_size: 5000
+  sample_size: 1000
+
+# Escrita na Bronze
+write:
+  target_rows_per_file: 200000
+
+# Retry com backoff exponencial em falha de I/O
+retry:
+  tentativas: 3
+  backoff_inicial_seg: 2
+
+# R8 — divergência tolerada entre origem e destino antes de marcar PARTIAL
+reconcile:
+  limiar_divergencia: 0.05

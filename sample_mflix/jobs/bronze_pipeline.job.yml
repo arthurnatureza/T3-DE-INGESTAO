@@ -2,46 +2,108 @@ resources:
   jobs:
     bronze_pipeline:
       name: "${var.table_prefix}bronze_pipeline"
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: UNPAUSED
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 3600
+
+      email_notifications:
+        on_failure:
+          - "${var.notification_email}"
+        on_duration_warning_threshold_exceeded:
+          - "${var.notification_email}"
+        no_alert_for_skipped_runs: true
+
+      parameters:
+        - name: table_prefix
+          default: "${var.table_prefix}"
+        - name: bundle_root
+          default: "${workspace.file_path}"
+
       tasks:
-        - task_key: bronze_users
+        - task_key: start_pipeline
+          condition_task:
+            left: "1"
+            op: EQUAL_TO
+            right: "1"
+
+        - task_key: bronze_movies
+          max_retries: 1
           notebook_task:
             notebook_path: ../notebooks/bronze_loader.py
             base_parameters:
-              collection: users
-              load_type: full
-              table_prefix: "${var.table_prefix}"
+              collection: movies
+          depends_on:
+            - task_key: start_pipeline
 
         - task_key: bronze_comments
+          max_retries: 1
           notebook_task:
             notebook_path: ../notebooks/bronze_loader.py
             base_parameters:
               collection: comments
-              load_type: incremental
-              watermark_field: date
-              table_prefix: "${var.table_prefix}"
+          depends_on:
+            - task_key: start_pipeline
 
-        # Testadas e prontas, só descomentar quando formos expandir:
-        # - task_key: bronze_theaters
-        #   notebook_task:
-        #     notebook_path: ../notebooks/bronze_loader.py
-        #     base_parameters:
-        #       collection: theaters
-        #       load_type: full
-        #       table_prefix: "${var.table_prefix}"
-        #
-        # - task_key: bronze_sessions
-        #   notebook_task:
-        #     notebook_path: ../notebooks/bronze_loader.py
-        #     base_parameters:
-        #       collection: sessions
-        #       load_type: full
-        #       table_prefix: "${var.table_prefix}"
-        #
-        # - task_key: bronze_movies
-        #   notebook_task:
-        #     notebook_path: ../notebooks/bronze_loader.py
-        #     base_parameters:
-        #       collection: movies
-        #       load_type: incremental
-        #       watermark_field: lastupdated
-        #       table_prefix: "${var.table_prefix}"
+        - task_key: bronze_users
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/bronze_loader.py
+            base_parameters:
+              collection: users
+          depends_on:
+            - task_key: start_pipeline
+
+        - task_key: bronze_theaters
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/bronze_loader.py
+            base_parameters:
+              collection: theaters
+          depends_on:
+            - task_key: start_pipeline
+
+        - task_key: bronze_sessions
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/bronze_loader.py
+            base_parameters:
+              collection: sessions
+          depends_on:
+            - task_key: start_pipeline
+
+        - task_key: bronze_embedded_movies
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/bronze_loader.py
+            base_parameters:
+              collection: embedded_movies
+          depends_on:
+            - task_key: start_pipeline
+
+        - task_key: resumo
+          depends_on:
+            - task_key: bronze_movies
+            - task_key: bronze_comments
+            - task_key: bronze_users
+            - task_key: bronze_theaters
+            - task_key: bronze_sessions
+            - task_key: bronze_embedded_movies
+          run_if: ALL_DONE
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/bronze_summary.py
+        
+        - task_key: end_pipeline
+          condition_task:
+            left: "1"
+            op: EQUAL_TO
+            right: "1"
+          depends_on:
+            - task_key: resumo

@@ -24,11 +24,15 @@ flowchart LR
     M -->|"extractor.py"| L
 ```
 
-- **Extração (Amanda):** `extractor.py` — MongoDB Atlas → catálogo `sample_mflix`,
-  schema `landing`.
-- **Carga (Arthur):** `loader.py` — `landing` → schema `bronze`, Delta,
-  particionado por `_ingestion_date`.
-- **Controle (Carina):** `control.py` — `bronze.control_ingestion_log`.
+- **Extração:** `notebooks/mongo-extractor.ipynb` — MongoDB → catálogo
+  `sample_mflix`, schema `landing` (Parquet versionado por `exec=`).
+- **Carga:** `notebooks/bronze_loader.py` — `landing` → schema `bronze`,
+  Delta, particionado por `_ingestion_date`. Fechamento em
+  `notebooks/bronze_summary.py`.
+- **Controle:** `notebooks/control.py` — `bronze.control_ingestion_log`,
+  watermark e reconciliação.
+- **Orquestração:** `jobs/bronze_pipeline.job.yml` — 7 tasks (6 coleções em
+  paralelo + `resumo` com `run_if: ALL_DONE`).
 
 ## Decisões técnicas
 
@@ -37,57 +41,52 @@ Preenchido incrementalmente à medida que avaliamos.
 | Item | Decisão | Justificativa |
 |---|---|---|
 | Formato Bronze | Delta | padrão do enunciado (R6), ACID, time travel |
-| Coluna `id` | extraída do `_id` do Mongo, separada do documento | organização e validação de duplicidade sem alterar o payload (R6 — fidelidade à origem) |
+| Coluna `id` | extraída do `_id` do Mongo, replicada numa coluna própria (`string`), sem remover `_id` do documento | organização e validação de duplicidade sem alterar o payload (R6 — fidelidade à origem) |
 | Idempotência | `MERGE INTO` por `id` | idempotente por construção (nunca duplica), aceito explicitamente pelo R3 |
-| Schema drift | `mergeSchema` na leitura + `withSchemaEvolution()` no MERGE + tabela de quarentena pra incompatibilidade real de tipo | R7, ver justificativa completa abaixo |
-| Estrutura da Bronze: colunas tipadas (structs/arrays preservando o documento) vs. JSON bruto numa coluna | **Colunas tipadas**, preservando nomes e aninhamento do documento original (`imdb`/`tomatoes`/`awards` continuam struct, `genres`/`cast` continuam array) — nada achatado pra colunas de negócio soltas | Ver "Por que colunas tipadas, não JSON bruto" abaixo |
+| Configuração | `config/pipeline_config.yaml` (global) + `config/collections.json` (por coleção) | R1 exige config externalizada; o JSON serve extração e carga ao mesmo tempo (`exclude_fields` para uma, `load_type`/`watermark_field` para a outra) |
+| Controle de partições | `repartition(ceil(linhas / 200.000))` antes da escrita | R2 — sem isso `users` (185 linhas) virava 8 arquivos Parquet; com isso, 1 arquivo, sem penalizar as coleções grandes |
+| Retry | `com_retry()` — 3 tentativas, backoff exponencial de 2s | R2 — cobre falha transitória do storage de objeto, que é a origem de I/O real da Bronze |
+| Status da execução | decidido por `reconcile()` da camada de controle | R8 — o limiar (5%) fica num único lugar, e a carga não duplica a regra de qualidade |
+| Tratamento de schema (R7) | `mergeSchema` na leitura da landing (protege contra diferença de colunas entre arquivos parquet do mesmo `exec=`) + quarentena pra `id` nulo ou falha de escrita | ver justificativa abaixo — schema da Bronze em si é fixo, não evolui |
+| Estrutura da Bronze: colunas tipadas vs. JSON bruto numa coluna | **JSON bruto** — `id` + coluna `json` com o documento inteiro, como veio da landing, sem nenhum campo achatado em coluna de negócio | **Decisão revista em 2026-08-28** (ver abaixo) — substitui a decisão anterior por colunas tipadas |
 
-### Por que colunas tipadas, não JSON bruto (`id` + documento inteiro numa coluna)
+### Por que JSON bruto, não colunas tipadas (decisão revista em 2026-08-28)
 
-R7 permite as duas estratégias ("schema evolution explícito" OU "persistência do
-documento como JSON/string bruta"):
+A decisão original (colunas tipadas, ver histórico abaixo) foi revertida:
+a Bronze passa a conter só `id` + `json` (documento completo, como está
+na landing) + colunas de controle — sem dividir o documento em colunas de
+negócio. Esse achatamento fica 100% pra camada Silver.
 
-- **Schema explícito:** declara um
-  `StructType` explícito preservando a estrutura do documento (`imdb`
-  continua struct aninhado, `genres`/`cast` continuam array) e o
-  resultado é `df_bronze`. Texto do slide: *"Estratégia Bronze: campos
-  problemáticos entram como `string` e a conversão vira uma regra
-  explícita no Silver."* Ou seja, o próprio professor rotula esse padrão
-  (colunas tipadas, preservando estrutura, sem achatar pra negócio) como
-  "Estratégia Bronze".
-- **Código real (não só slide) — conferido em `mongo_reader.py`,
-  `mongo_reader_.py`, `Exercicios.py`, `code-samples/*.ipynb`:** em
-  **nenhum** desses arquivos ele grava uma tabela Bronze como `id +
-  coluna única com o JSON inteiro`. O `MongoReader.read(infer=False)`
-  até devolve `_id, body` (JSON bruto), mas isso nunca é escrito como
-  tabela — só aparece em `.display()` pra exploração, é uma etapa
-  intermediária da classe. Todo write real (Postgres, API, Mongo via
-  `expand()`) materializa colunas tipadas.
+Motivos:
+- A landing agora grava todos os campos como `string` (commit
+  `e04b815`), então manter colunas tipadas na Bronze já não preservava
+  tipo nenhum do Mongo — só duplicava a divisão de campos sem ganho real
+  de fidelidade.
+- R7 aceita as duas estratégias (schema explícito OU persistência como
+  JSON/string bruta) — JSON bruto é a opção mais conservadora: Bronze
+  fica 100% fiel à origem, sem nenhuma decisão de shape, e qualquer
+  achatamento (`imdb`/`tomatoes` como struct, `explode` de
+  `cast`/`genres`, etc.) vira trabalho explícito da Silver — inclusive
+  reforça o bônus de Silver (+4 pts, que é exatamente esse achatamento).
+- Efeito colateral positivo: schema da Bronze fica fixo pra sempre (`id`,
+  `json`, colunas de controle) — não precisa mais de
+  `withSchemaEvolution()` no MERGE nem de quarentena por conflito de
+  tipo. A quarentena continua existindo (R7 exige nunca descartar
+  silenciosamente), mas agora protege contra `id` nulo (documento sem
+  `_id` utilizável) ou falha de escrita, não mais schema drift.
 
-**Decisão:** manter a Bronze com colunas tipadas herdadas da landing
-(nada renomeado, nada descartado, nada achatado pra colunas de negócio
-soltas — struct/array preservam a estrutura original do documento).
-Reforça essa escolha o desafio bônus de Silver (+4 pts) ser exatamente
-"achatamento de `imdb`/`tomatoes`, explode de `cast`/`genres`" — se a
-Bronze já fizesse isso, esse bônus perderia sentido.
+### Histórico: decisão original (colunas tipadas), até 2026-08-27
 
-### Comparação com o mercado (não só o material da disciplina)
-
-Existem três variações reais pra Bronze de fonte semiestruturada, não duas:
-
-| Opção | Descrição | Avaliação |
-|---|---|---|
-| **A — JSON bruto** | `id` + coluna única com o documento inteiro (string ou tipo `VARIANT` do Delta) | Válida e conservadora — reprocessa Bronze→Silver sem depender de reconsultar a fonte. Hoje, com `VARIANT`, dá pra ter isso e ainda consultar campo a campo sem `from_json` explícito. |
-| **B — Colunas tipadas + schema evolution + rescue** (nossa escolha) | Schema aplicado (explícito ou inferido), mas com `mergeSchema`/`withSchemaEvolution()` pra absorver campo novo e quarentena pro que não bate | É o comportamento *default* do Databricks Auto Loader pra fonte semiestruturada (`_rescued_data` + `schemaEvolutionMode`) — não é simplificação de sala de aula, é padrão real da ferramenta. |
-| **C — Achatar campos de negócio** | Explodir `cast`, achatar `imdb.rating` em coluna solta já na Bronze | **Não é** best practice em lugar nenhum — acopla Bronze a decisão de negócio que pertence à Silver. Descartada. |
-
-**Decisão final:** mantivemos B. É best practice real, já implementada 
-e validada com dado real, e o enunciado (R7)
-aceita tanto A quanto B como estratégias válidas — trocar pra A agora
-seria refazer trabalho testado por um ganho de "pureza arquitetural" que
-o trabalho não exige. A (JSON bruto/`VARIANT`) seria a escolha por
-padrão numa arquitetura nova sem restrição de tempo, mas não é superior o
-suficiente pra justificar o retrabalho aqui.
+R7 permite as duas estratégias ("schema evolution explícito" OU
+"persistência do documento como JSON/string bruta"). A decisão original
+foi por colunas tipadas, com base em: o slide do professor rotular esse
+padrão como "Estratégia Bronze"; nenhum código de exemplo do professor
+gravar Bronze como `id + JSON inteiro`; e ser o comportamento *default*
+do Databricks Auto Loader (`_rescued_data` + `schemaEvolutionMode`).
+Essa análise não estava errada — ambas as opções (A: JSON bruto, B:
+colunas tipadas) são válidas e aceitas pelo R7. A mudança pra A não
+corrige um erro, é uma escolha de projeto diferente, tomada depois que a
+landing passou a ser 100% string (ver acima).
 
 ### Limitação conhecida: leitura só do `exec=` mais recente da landing
 
@@ -133,8 +132,9 @@ camada Bronze, não a extração.
       se vier valor, filtra `campo_watermark > watermark`; se vier `None`,
       trata como primeira carga (lê tudo).
    d. Conta `qtd_lida_origem`.
-   e. Adiciona colunas de rastreabilidade (R4) + `id` (extraído de `_id`,
-      separado do resto do documento).
+   e. Monta `json` (documento completo, sem achatar) + `id` (extraído de
+      `_id`, replicado numa coluna própria) + colunas de rastreabilidade
+      (R4).
    f. Escreve na Bronze via `MERGE INTO` por `id` (idempotência — evita
       duplicar em reprocessamento, e é uma das estratégias explicitamente
       aceitas pelo enunciado nas R3, junto com partição sobrescrita).

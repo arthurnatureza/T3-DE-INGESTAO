@@ -1,0 +1,45 @@
+resources:
+  jobs:
+    landing_pipeline:
+      name: "${var.table_prefix}landing_pipeline"
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 3600
+
+      email_notifications:
+        on_failure:
+          - "${var.notification_email}"
+        on_duration_warning_threshold_exceeded:
+          - "${var.notification_email}"
+        no_alert_for_skipped_runs: true
+
+      parameters:
+        - name: table_prefix
+          default: "${var.table_prefix}"
+        - name: bundle_root
+          default: "${workspace.file_path}"
+
+      tasks:
+        - task_key: start_pipeline
+          condition_task:
+            left: "1"
+            op: EQUAL_TO
+            right: "1"
+
+        - task_key: mongo_extractor
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/mongo-extractor.ipynb
+          depends_on:
+            - task_key: start_pipeline
+        
+        - task_key: end_pipeline
+          condition_task:
+            left: "1"
+            op: EQUAL_TO
+            right: "1"
+          depends_on:
+            - task_key: mongo_extractor
