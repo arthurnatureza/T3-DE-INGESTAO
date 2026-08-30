@@ -6,7 +6,7 @@
 |--------|-----------|--------------------------|
 | Amanda Freire Ferreira | 2650353 | Desenvolvimento da **Landing Zone** (`notebooks/mongo-extractor.ipynb`); conexão iterativa com MongoDB; regras de ofuscação (LGPD); conversão forçada de schema para `string` garantindo resiliência; versionamento temporal de arquivos Parquet. |
 | Arthur Natureza Reis Bezerra | 2650497 | Desenvolvimento da **Bronze Zone** (`notebooks/bronze_loader.py`); orquestração de jobs (`bronze_pipeline.job.yml`); estruturação da documentação e arquitetura. |
-| Carina Barros Timbó | 2650658 | Implementação do módulo de **Controle e Reconciliação** (`control_log.py`); desenvolvimento da lógica de persistência de *watermark* para cargas incrementais; gravação de métricas na tabela `control_ingestion_log`; validação de qualidade de dados (cálculo de divergência, nulos e duplicados). |
+| Carina Barros Timbó | 2650658 | Implementação do módulo de **Controle e Reconciliação** (`control_log.py`); desenvolvimento da lógica de persistência de *watermark* para cargas incrementais; gravação de métricas na tabela `control_ingestion_log`; validação de qualidade de dados (cálculo de divergência, nulos e duplicados); Dashboard do Databricks para monitoramento de ingestão. |
 
 ## Detalhamento por commit
 
@@ -39,4 +39,7 @@ bd44ce1 Merge pull request #8 from arthurnatureza/feat/add-some-configs
 ```text
 1cde8c7 camada de controle de log
 d5ed777 Merge pull request #4 from arthurnatureza/log
+448da30 dashboard
+22ac719 Documentação do dashboard
+a00f9a4 Merge pull request #9 from arthurnatureza/feat/dashboard
 ```
