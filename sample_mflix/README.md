@@ -266,6 +266,32 @@ legitimamente quando registros são desviados para a quarentena.
 
 ---
 
+## Dashboard de Monitoramento de Ingestão
+
+Para acompanhar e garantir a qualidade da carga de dados da camada **Landing** para a **Bronze**, utilizou-se um dashboard de monitoramento no Databricks construído sobre a tabela de controle `bronze.control_ingestion_log`.
+
+### Indicadores Principais (KPIs)
+
+- **Total de Ingestões:** Total acumulado de execuções de pipeline.
+- **Total de Falhas:** Quantidade de execuções com erro.
+
+### Painéis e Gráficos
+
+- **Volume de Ingestões por Dia:** Acompanhamento temporal das cargas divididas em volume total, sucessos e falhas.
+- **Status por Collection:** Distribuição das execuções agrupadas por coleção (ex.: `comments`, `movies`, `sessions`, `theaters`, `users`).
+- **Duração Média (segundos):** Tendência de tempo de execução das cargas ao longo do tempo.
+- **Taxa de Falha (%):** Percentual de erro nas cargas diárias.
+- **Detalhes das Ingestões:** Tabela detalhada por Data, *Collection* e Tipo de Carga (*Load Type*), incluindo métricas de registros lidos/gravados e duração.
+
+### Filtros Globais
+
+- **Collection:** Permite filtrar todas as métricas do painel por uma coleção específica ou visualizar todas de forma consolidada.
+
+### Visualização Final
+
+![alt text](./docs/imgs/image.png)
+---
+
 ## Como executar
 
 O projeto é um Databricks Asset Bundle. Requer a CLI do Databricks

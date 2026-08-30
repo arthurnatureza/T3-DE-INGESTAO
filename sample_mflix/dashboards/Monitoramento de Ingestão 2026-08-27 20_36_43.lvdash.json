@@ -1,0 +1,638 @@
+{
+  "datasets": [
+    {
+      "name": "ingestion_metrics",
+      "displayName": "Métricas de Ingestão",
+      "config": {
+        "version": "1.1",
+        "source": "sample_mflix.bronze.control_ingestion_log",
+        "dimensions": [
+          {
+            "name": "Data",
+            "expr": "DATE(start_time)"
+          },
+          {
+            "name": "Collection",
+            "expr": "collection"
+          },
+          {
+            "name": "Load Type",
+            "expr": "load_type"
+          },
+          {
+            "name": "Status",
+            "expr": "status"
+          }
+        ],
+        "measures": [
+          {
+            "name": "volume_total",
+            "expr": "COUNT(*)"
+          },
+          {
+            "name": "duracao_media_seg",
+            "expr": "AVG(duracao_seg)"
+          },
+          {
+            "name": "duracao_total_seg",
+            "expr": "SUM(duracao_seg)"
+          },
+          {
+            "name": "taxa_falha_pct",
+            "expr": "SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)"
+          },
+          {
+            "name": "qtd_falhas",
+            "expr": "SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END)"
+          },
+          {
+            "name": "qtd_sucesso",
+            "expr": "SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END)"
+          },
+          {
+            "name": "registros_lidos",
+            "expr": "SUM(qtd_lida_origem)"
+          },
+          {
+            "name": "registros_gravados",
+            "expr": "SUM(qtd_gravada_destino)"
+          }
+        ]
+      }
+    }
+  ],
+  "pages": [
+    {
+      "name": "8969bd57",
+      "displayName": "Monitoramento Ingestão",
+      "layout": [
+        {
+          "widget": {
+            "name": "volume_por_dia",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ingestion_metrics",
+                  "fields": [
+                    {
+                      "name": "daily(Data)",
+                      "expression": "DATE_TRUNC(\"DAY\", `Data`)"
+                    },
+                    {
+                      "name": "measure(volume_total)",
+                      "expression": "MEASURE(`volume_total`)"
+                    },
+                    {
+                      "name": "measure(qtd_falhas)",
+                      "expression": "MEASURE(`qtd_falhas`)"
+                    },
+                    {
+                      "name": "measure(qtd_sucesso)",
+                      "expression": "MEASURE(`qtd_sucesso`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Volume de Ingestões por Dia",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 1
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 3
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 4
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 5
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 6
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 7
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 8
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 9
+                  },
+                  {
+                    "themeColorType": "visualizationColors",
+                    "position": 10
+                  }
+                ]
+              },
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "daily(Data)",
+                  "displayName": "Day",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "measure(volume_total)",
+                      "displayName": "volume_total"
+                    },
+                    {
+                      "fieldName": "measure(qtd_falhas)"
+                    },
+                    {
+                      "fieldName": "measure(qtd_sucesso)"
+                    }
+                  ]
+                },
+                "color": {
+                  "legend": {
+                    "position": "top",
+                    "hideTitle": true,
+                    "hide": false
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "duracao_media",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ingestion_metrics",
+                  "fields": [
+                    {
+                      "name": "daily(Data)",
+                      "expression": "DATE_TRUNC(\"DAY\", `Data`)"
+                    },
+                    {
+                      "name": "measure(duracao_media_seg)",
+                      "expression": "MEASURE(`duracao_media_seg`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Duração Média (segundos)",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "daily(Data)",
+                  "displayName": "Day",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(duracao_media_seg)",
+                  "displayName": "duracao_media_seg",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "taxa_falha",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ingestion_metrics",
+                  "fields": [
+                    {
+                      "name": "daily(Data)",
+                      "expression": "DATE_TRUNC(\"DAY\", `Data`)"
+                    },
+                    {
+                      "name": "measure(taxa_falha_pct)",
+                      "expression": "MEASURE(`taxa_falha_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Taxa de Falha (%)",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "daily(Data)",
+                  "displayName": "Day",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(taxa_falha_pct)",
+                  "displayName": "taxa_falha_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "volume_total",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ingestion_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(volume_total)",
+                      "expression": "MEASURE(`volume_total`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Total Ingestões",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(volume_total)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "qtd_falhas",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ingestion_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(qtd_falhas)",
+                      "expression": "MEASURE(`qtd_falhas`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Total Falhas",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(qtd_falhas)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "status_por_collection",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ingestion_metrics",
+                  "fields": [
+                    {
+                      "name": "Collection",
+                      "expression": "`Collection`"
+                    },
+                    {
+                      "name": "measure(volume_total)",
+                      "expression": "MEASURE(`volume_total`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "showDescription": false,
+                "title": {
+                  "value": "Status por Collection",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "mark": {
+                "layout": "stack"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "measure(volume_total)",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "volume_total",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "Collection",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "Collection",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "color": {
+                  "fieldName": "Collection",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Collection",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "detalhes_ingestao",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ingestion_metrics",
+                  "fields": [
+                    {
+                      "name": "Data",
+                      "expression": "`Data`"
+                    },
+                    {
+                      "name": "Collection",
+                      "expression": "`Collection`"
+                    },
+                    {
+                      "name": "Load Type",
+                      "expression": "`Load Type`"
+                    },
+                    {
+                      "name": "measure(volume_total)",
+                      "expression": "MEASURE(`volume_total`)"
+                    },
+                    {
+                      "name": "measure(duracao_media_seg)",
+                      "expression": "MEASURE(`duracao_media_seg`)"
+                    },
+                    {
+                      "name": "measure(registros_lidos)",
+                      "expression": "MEASURE(`registros_lidos`)"
+                    },
+                    {
+                      "name": "measure(registros_gravados)",
+                      "expression": "MEASURE(`registros_gravados`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Detalhes das Ingestões",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "Data"
+                  },
+                  {
+                    "fieldName": "Collection"
+                  },
+                  {
+                    "fieldName": "Load Type"
+                  },
+                  {
+                    "fieldName": "measure(volume_total)"
+                  },
+                  {
+                    "fieldName": "measure(duracao_media_seg)"
+                  },
+                  {
+                    "fieldName": "measure(registros_lidos)"
+                  },
+                  {
+                    "fieldName": "measure(registros_gravados)"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "a66238d8",
+            "queries": [
+              {
+                "name": "dashboards/01f1a270280915518e2e501622cac20c/datasets/01f1a275085613c7b82b7bddf5db60cb_Collection",
+                "query": {
+                  "datasetName": "ingestion_metrics",
+                  "fields": [
+                    {
+                      "name": "Collection",
+                      "expression": "`Collection`"
+                    },
+                    {
+                      "name": "Collection_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "Collection",
+                    "queryName": "dashboards/01f1a270280915518e2e501622cac20c/datasets/01f1a275085613c7b82b7bddf5db60cb_Collection"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 8,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
