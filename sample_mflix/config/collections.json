@@ -1,12 +1,18 @@
 {
   "movies": {
-    "load_type": "incremental",
+    "load_type": "full",
     "watermark_field": "lastupdated",
     "exclude_fields": [],
-    "explode_fields": ["cast", "genres", "countries", "directors", "writers"]
+    "explode_fields": [
+      "cast",
+      "genres",
+      "countries",
+      "directors",
+      "writers"
+    ]
   },
   "comments": {
-    "load_type": "incremental",
+    "load_type": "full",
     "watermark_field": "date",
     "exclude_fields": [],
     "explode_fields": []
@@ -14,7 +20,9 @@
   "users": {
     "load_type": "full",
     "watermark_field": null,
-    "exclude_fields": ["password"],
+    "exclude_fields": [
+      "password"
+    ],
     "explode_fields": []
   },
   "theaters": {
@@ -26,13 +34,20 @@
   "sessions": {
     "load_type": "full",
     "watermark_field": null,
-    "exclude_fields": ["jwt"],
+    "exclude_fields": [
+      "jwt"
+    ],
     "explode_fields": []
   },
   "embedded_movies": {
     "load_type": "full",
     "watermark_field": null,
-    "exclude_fields": ["plot_embedding"],
-    "explode_fields": ["cast", "genres"]
+    "exclude_fields": [
+      "plot_embedding"
+    ],
+    "explode_fields": [
+      "cast",
+      "genres"
+    ]
   }
 }
