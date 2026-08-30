@@ -1,0 +1,6 @@
+resources:
+  dashboards:
+    monitoramento_ingestao:
+      display_name: "${var.table_prefix}Monitoramento de Ingestão"
+      file_path: ../dashboards/monitoramento_ingestao.lvdash.json
+      warehouse_id: ${var.warehouse_id}
