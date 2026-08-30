@@ -289,7 +289,7 @@ Para acompanhar e garantir a qualidade da carga de dados da camada **Landing** p
 
 ### Visualização Final
 
-![alt text](./docs/imgs/image.png)
+![alt text](./docs/imgs/dashboard.png)
 ---
 
 ## Como executar
