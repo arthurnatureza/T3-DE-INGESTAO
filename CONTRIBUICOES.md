@@ -6,7 +6,38 @@
 |--------|-----------|--------------------------|
 | Amanda Freire Ferreira | 2650353 | Desenvolvimento da **Landing Zone** (`notebooks/mongo-extractor.ipynb`); conexão iterativa com MongoDB; regras de ofuscação (LGPD); conversão forçada de schema para `string` garantindo resiliência; versionamento temporal de arquivos Parquet. |
 | Arthur Natureza Reis Bezerra | 2650497 | Desenvolvimento da **Bronze Zone** (`notebooks/bronze_loader.py`); orquestração de jobs (`bronze_pipeline.job.yml`); estruturação da documentação e arquitetura. |
-| Carina Barros Timbó | 2650658 | Implementação do módulo de **Controle e Reconciliação** (`control_log.py`); desenvolvimento da lógica de persistência de *watermark* para cargas incrementais; gravação de métricas na tabela `control_ingestion_log`; validação de qualidade de dados (cálculo de divergência, nulos e duplicados); Dashboard do Databricks para monitoramento de ingestão. |
+| Carina Barros Timbó | 2650658 | Implementação do módulo de **Controle e Reconciliação** (`notebooks/control.py`); desenvolvimento da lógica de persistência de *watermark* para cargas incrementais; gravação de métricas na tabela `control_ingestion_log`; validação de qualidade de dados (cálculo de divergência, nulos e duplicados); Dashboard do Databricks para monitoramento de ingestão. |
+
+## Contribuições com apoio de IA
+
+O grupo utilizou assistente de IA (Claude) como ferramenta de apoio ao
+desenvolvimento. A atuação se concentrou em quatro frentes:
+
+**Documentação** — redação e estruturação do `README.md`, do
+`docs/ARQUITETURA.md` e do `jobs/README.md`, incluindo o diagrama de fluxo
+em Mermaid, as tabelas de decisões técnicas e a justificativa escrita de
+cada requisito do enunciado.
+
+**Organização** — reestruturação do projeto em Databricks Asset Bundle,
+separando `notebooks/`, `jobs/`, `config/` e `dashboards/`; externalização
+dos parâmetros em `config/pipeline_config.yaml` e `config/collections.json`;
+padronização de nomenclatura e criação dos targets `dev` e `prod`.
+
+**Testes** — execução e validação das pipelines contra dados reais:
+conferência de contagens origem × destino em todas as coleções,
+comprovação de idempotência (`count(*) = count(DISTINCT id)` após
+reexecuções), verificação da estrutura física de particionamento e
+inspeção do histórico Delta das tabelas.
+
+**Correções de bug** — identificação e correção de falhas encontradas
+durante a validação, entre elas: incompatibilidade de operações não
+suportadas em compute serverless; divergência entre a ordem de colunas
+declarada no módulo de controle e o schema real da tabela; e dependências
+de tarefa sem `outcome` definido em condições de job.
+
+O uso da ferramenta foi sempre supervisionado: decisões de arquitetura,
+escopo e priorização permaneceram com os integrantes do grupo, que
+revisaram e validaram cada alteração antes de incorporá-la.
 
 ## Detalhamento por commit
 

@@ -1,6 +1,7 @@
 # Arquitetura — sample_mflix (grupo)
 
-> Em construção.
+Documento de decisões técnicas. A visão geral, o guia de execução e as
+justificativas de requisito estão no [README](../README.md).
 
 ---
 
@@ -8,152 +9,176 @@
 
 ```mermaid
 flowchart LR
-    subgraph ORIGEM
-        M[(MongoDB Atlas\nsample_mflix)]
-    end
+    M[(MongoDB<br/>sample_mflix<br/>6 coleções)]
 
-    subgraph DATABRICKS["Databricks — Unity Catalog: sample_mflix"]
+    subgraph DBX["Databricks — Unity Catalog: sample_mflix"]
         direction TB
-        L["landing\n(6 tabelas)"]
-        B[("bronze\n(Delta — append only)")]
+        L["landing<br/>Volume /mongo/&lt;colecao&gt;/exec=&lt;timestamp&gt;<br/>Parquet, snapshot completo"]
+        B[("bronze.&lt;colecao&gt;<br/>id + json + controle<br/>Delta, particionado por _ingestion_date")]
+        S[("silver.&lt;colecao&gt;<br/>colunas tipadas + satélites")]
+        Q[("bronze.quarentena")]
         C[("bronze.control_ingestion_log")]
-        L -->|"loader.py"| B
+
+        L -->|"bronze_loader"| B
+        L -.->|"id nulo / falha de escrita"| Q
+        B -->|"silver_loader"| S
         B --> C
+        S --> C
+        Q --> C
     end
 
-    M -->|"extractor.py"| L
+    M -->|"mongo-extractor"| L
 ```
 
-- **Extração:** `notebooks/mongo-extractor.ipynb` — MongoDB → catálogo
-  `sample_mflix`, schema `landing` (Parquet versionado por `exec=`).
-- **Carga:** `notebooks/bronze_loader.py` — `landing` → schema `bronze`,
-  Delta, particionado por `_ingestion_date`. Fechamento em
-  `notebooks/bronze_summary.py`.
-- **Controle:** `notebooks/control.py` — `bronze.control_ingestion_log`,
-  watermark e reconciliação.
-- **Orquestração:** `jobs/bronze_pipeline.job.yml` — 7 tasks (6 coleções em
-  paralelo + `resumo` com `run_if: ALL_DONE`).
+| Camada | Código | Job | Gatilho |
+|---|---|---|---|
+| Extract | `notebooks/mongo-extractor.ipynb` | `landing_pipeline` | manual |
+| Load (Bronze) | `notebooks/bronze_loader.py` + `bronze_summary.py` | `bronze_pipeline` | cron diário 6h |
+| Load (Silver) | `notebooks/silver_loader.py` | `silver_pipeline` | atualização de tabela Bronze |
+| Controle | `notebooks/control.py` | — | — |
+
+O ambiente (catálogo, schemas, volume e tabelas) é criado por
+`notebooks/setup_ambiente.sql`.
+
+---
 
 ## Decisões técnicas
 
-Preenchido incrementalmente à medida que avaliamos.
-
 | Item | Decisão | Justificativa |
 |---|---|---|
-| Formato Bronze | Delta | padrão do enunciado (R6), ACID, time travel |
+| Formato Bronze e Silver | Delta | padrão do enunciado (R6), ACID, time travel |
 | Coluna `id` | extraída do `_id` do Mongo, replicada numa coluna própria (`string`), sem remover `_id` do documento | organização e validação de duplicidade sem alterar o payload (R6 — fidelidade à origem) |
-| Idempotência | `MERGE INTO` por `id` | idempotente por construção (nunca duplica), aceito explicitamente pelo R3 |
-| Configuração | `config/pipeline_config.yaml` (global) + `config/collections.json` (por coleção) | R1 exige config externalizada; o JSON serve extração e carga ao mesmo tempo (`exclude_fields` para uma, `load_type`/`watermark_field` para a outra) |
+| Idempotência | `MERGE INTO` por `id` (Bronze) e por `id` / `id`+valor nas satélites (Silver) | idempotente por construção (nunca duplica), aceito explicitamente pelo R3 |
+| Configuração | `config/pipeline_config.yaml` (global) + `config/collections.json` (por coleção) | R1 exige config externalizada; o JSON serve as três camadas ao mesmo tempo (`exclude_fields` na extração, `load_type`/`watermark_field` na Bronze, `explode_fields` na Silver) |
 | Controle de partições | `repartition(ceil(linhas / 200.000))` antes da escrita | R2 — sem isso `users` (185 linhas) virava 8 arquivos Parquet; com isso, 1 arquivo, sem penalizar as coleções grandes |
 | Retry | `com_retry()` — 3 tentativas, backoff exponencial de 2s | R2 — cobre falha transitória do storage de objeto, que é a origem de I/O real da Bronze |
 | Status da execução | decidido por `reconcile()` da camada de controle | R8 — o limiar (5%) fica num único lugar, e a carga não duplica a regra de qualidade |
-| Tratamento de schema (R7) | `mergeSchema` na leitura da landing (protege contra diferença de colunas entre arquivos parquet do mesmo `exec=`) + quarentena pra `id` nulo ou falha de escrita | ver justificativa abaixo — schema da Bronze em si é fixo, não evolui |
-| Estrutura da Bronze: colunas tipadas vs. JSON bruto numa coluna | **JSON bruto** — `id` + coluna `json` com o documento inteiro, como veio da landing, sem nenhum campo achatado em coluna de negócio | **Decisão revista em 2026-08-28** (ver abaixo) — substitui a decisão anterior por colunas tipadas |
+| Tratamento de schema (R7) | `mergeSchema` na leitura da landing + quarentena para `id` nulo ou falha de escrita | schema da Bronze é fixo, não evolui — ver abaixo |
+| Estrutura da Bronze | **JSON bruto** — `id` + coluna `json` com o documento inteiro, sem nenhum campo achatado | ver "Por que JSON bruto" abaixo |
 
-### Por que JSON bruto, não colunas tipadas (decisão revista em 2026-08-28)
+---
 
-A decisão original (colunas tipadas, ver histórico abaixo) foi revertida:
-a Bronze passa a conter só `id` + `json` (documento completo, como está
-na landing) + colunas de controle — sem dividir o documento em colunas de
-negócio. Esse achatamento fica 100% pra camada Silver.
+## Por que JSON bruto na Bronze, não colunas tipadas
 
-Motivos:
-- A landing agora grava todos os campos como `string` (commit
-  `e04b815`), então manter colunas tipadas na Bronze já não preservava
-  tipo nenhum do Mongo — só duplicava a divisão de campos sem ganho real
-  de fidelidade.
-- R7 aceita as duas estratégias (schema explícito OU persistência como
-  JSON/string bruta) — JSON bruto é a opção mais conservadora: Bronze
-  fica 100% fiel à origem, sem nenhuma decisão de shape, e qualquer
-  achatamento (`imdb`/`tomatoes` como struct, `explode` de
-  `cast`/`genres`, etc.) vira trabalho explícito da Silver — inclusive
-  reforça o bônus de Silver (+4 pts, que é exatamente esse achatamento).
-- Efeito colateral positivo: schema da Bronze fica fixo pra sempre (`id`,
-  `json`, colunas de controle) — não precisa mais de
-  `withSchemaEvolution()` no MERGE nem de quarentena por conflito de
-  tipo. A quarentena continua existindo (R7 exige nunca descartar
-  silenciosamente), mas agora protege contra `id` nulo (documento sem
-  `_id` utilizável) ou falha de escrita, não mais schema drift.
+A Bronze contém só `id` + `json` (documento completo, como está na landing)
++ colunas de controle. Nenhuma divisão do documento em colunas de negócio —
+esse achatamento é responsabilidade exclusiva da Silver.
+
+- R7 aceita as duas estratégias (schema explícito **ou** persistência como
+  JSON/string bruta). JSON bruto é a opção mais conservadora: a Bronze fica
+  fiel à origem, sem nenhuma decisão de shape, e qualquer interpretação
+  (`imdb`/`tomatoes` achatados, `explode` de `cast`/`genres`) vira trabalho
+  explícito e revisável da camada seguinte.
+- O schema da Bronze fica **fixo para sempre** (`id`, `json`, controle).
+  Campo novo, campo ausente ou tipo divergente entre documentos não quebram
+  a carga nem exigem evolução de schema na escrita.
+- Reprocessar Bronze → Silver nunca depende de reconsultar o Mongo: o
+  documento original está armazenado e pode ser reinterpretado à vontade.
+
+**Contrapartida:** o custo de tipagem é deslocado para a Silver, que precisa
+inferir schema e aplicar `from_json` a cada execução.
 
 ### Histórico: decisão original (colunas tipadas), até 2026-08-27
 
-R7 permite as duas estratégias ("schema evolution explícito" OU
-"persistência do documento como JSON/string bruta"). A decisão original
-foi por colunas tipadas, com base em: o slide do professor rotular esse
-padrão como "Estratégia Bronze"; nenhum código de exemplo do professor
-gravar Bronze como `id + JSON inteiro`; e ser o comportamento *default*
-do Databricks Auto Loader (`_rescued_data` + `schemaEvolutionMode`).
-Essa análise não estava errada — ambas as opções (A: JSON bruto, B:
-colunas tipadas) são válidas e aceitas pelo R7. A mudança pra A não
-corrige um erro, é uma escolha de projeto diferente, tomada depois que a
-landing passou a ser 100% string (ver acima).
+A primeira decisão foi por colunas tipadas na Bronze, com base em: o slide
+do professor rotular esse padrão como "Estratégia Bronze"; nenhum código de
+exemplo dele gravar Bronze como `id + JSON inteiro`; e ser o comportamento
+*default* do Databricks Auto Loader (`_rescued_data` +
+`schemaEvolutionMode`). Ambas as opções são válidas e aceitas pelo R7 — a
+mudança não corrige um erro, é uma escolha de projeto diferente, tomada para
+concentrar toda a modelagem na Silver.
 
-### Limitação conhecida: leitura só do `exec=` mais recente da landing
+---
+
+## Camada Silver
+
+Uma tabela principal por coleção, com o documento quebrado em colunas
+tipadas, mais tabelas satélite para os campos multivalorados.
+
+**Como o schema é obtido:** `schema_of_json_agg` sobre o próprio lote —
+nenhuma coluna é declarada à mão, então campo novo na origem aparece
+sozinho. Structs aninhados são achatados recursivamente com `_` como
+separador (`imdb.rating` → `imdb_rating`, `tomatoes.viewer.rating` →
+`tomatoes_viewer_rating`).
+
+**Deduplicação:** `row_number()` particionado por `id` ordenado por
+`_ingestion_timestamp` desc — fica só o registro mais recente de cada
+documento (*latest record*), como pede o bônus.
+
+**Tabelas satélite:** os campos listados em `explode_fields` saem da tabela
+principal e viram `silver.<colecao>_<campo>` com uma linha por par
+(`id`, valor). Para `movies`: `cast`, `genres`, `countries`, `directors`,
+`writers`.
+
+**Leitura incremental:** a Silver filtra a Bronze por `_ingestion_timestamp`
+maior que a watermark da sua última execução bem-sucedida. Coleção sem linha
+nova sai com `qtd_lida_origem = 0` e não escreve nada — é assim que o job
+processa só as tabelas que mudaram.
+
+**Gatilho:** `trigger.table_update` sobre as 6 tabelas da Bronze, com
+`condition: ANY_UPDATED`. O job dispara inteiro quando qualquer uma é
+atualizada, e o filtro por watermark faz cada task decidir se tem trabalho.
+
+**Limitação conhecida:** as satélites usam `MERGE` que só insere pares
+novos. Se um valor for removido do array na origem (um ator sai do elenco),
+a linha antiga permanece na satélite.
+
+---
+
+## Watermark
+
+Watermark é o valor que marca até onde a última execução bem-sucedida já
+processou, persistido em `control_ingestion_log.watermark_final`. A execução
+seguinte lê esse valor com `get_last_watermark(collection)` e filtra o que
+está acima dele.
+
+O campo usado muda por camada:
+
+| Camada | Campo | Observação |
+|---|---|---|
+| Bronze | campo de negócio (`comments.date`, `movies.lastupdated`) | definido em `collections.json` |
+| Silver | `_ingestion_timestamp` da Bronze | chave `silver_<colecao>` no log |
+
+É a forma "manual" de carga incremental, sem CDC real (change streams seriam
+o outro bônus). Quem aplica o filtro é sempre a camada de destino, nunca a
+extração.
+
+`movies` usa `lastupdated`, que é string. A comparação lexicográfica
+funciona porque o formato é fixo (`YYYY-MM-DD HH:MM:SS...`); se variasse,
+seria preciso converter antes de comparar.
+
+---
+
+## Limitação conhecida: leitura só do `exec=` mais recente da landing
 
 A Bronze sempre lê apenas a pasta `exec=<timestamp>` mais recente de cada
-coleção na landing (`latest_landing_path()`), nunca as pastas
-intermediárias não consumidas. Isso é seguro na prática porque cada
-`exec=` é um **snapshot completo da coleção** (relê tudo do
-Mongo a cada execução, não é um delta) — a pasta mais nova é sempre um
-superconjunto das anteriores pra qualquer documento que ainda exista na
-fonte, então pular pastas intermediárias não perde dado novo, mesmo que a
-Bronze rode com menos frequência que a extração.
+coleção (`latest_landing_path()`), nunca as intermediárias não consumidas.
+É seguro porque cada `exec=` é um **snapshot completo da coleção** (relê
+tudo do Mongo, não é delta) — a pasta mais nova é sempre um superconjunto
+das anteriores para qualquer documento que ainda exista na fonte. Pular
+pastas intermediárias não perde dado novo, mesmo que a Bronze rode com menos
+frequência que a extração.
 
-**Risco identificado:** a landing usa inferência de
-schema por amostra (`sample_size=1000` default no `expand()`),
-*"o schema inferido pode mudar entre uma execução e outra do mesmo
-pipeline, sem que nada na origem tenha mudado."* 
-Sugestão:
-declarar schema explícito ou aumentar `sample_size` pra cobrir a 
-coleção inteira nas coleções pequenas/médias.
+A exceção é um documento **apagado** do Mongo entre duas extrações: ele
+nunca chega à Bronze. Aceito conscientemente — tratar isso exigiria
+controlar quais pastas já foram consumidas.
 
-### O que é "watermark" neste projeto
+**Risco relacionado:** a extração infere schema por amostra
+(`sample_size=1000`), então o schema inferido pode variar entre execuções
+sem que nada tenha mudado na origem. Não afeta a Bronze (que só serializa o
+que chegou), mas afeta a estabilidade das colunas da landing e, por
+consequência, da Silver.
 
-Watermark é o valor (de um campo de data/hora do próprio dado, ex.:
-`comments.date`) que marca até onde a última execução bem-sucedida já
-processou. Fica persistido em `control_ingestion_log.watermark_final`. A
-próxima execução lê esse valor (`get_last_watermark(collection)`) e só
-processa registros com `campo_watermark > watermark_final` anterior. É a
-forma "manual" de fazer carga incremental sem CDC real (change streams —
-esse seria o bônus). Ver decisão abaixo: quem aplica esse filtro é a
-camada Bronze, não a extração.
+---
 
-## Plano de construção — Bronze (fase 1: `users` + `comments`)
+## Ambientes
 
-1. Confirmar que `get_last_watermark`/`log_execution` vão
-   apontar pra tabela real `sample_mflix.bronze.control_ingestion_log`.
-2. Criar os objetos de desenvolvimento no Databricks com prefixo `dev_`
-   (schema ou tabelas — decidir nomenclatura exata).
-3. Escrever uma função genérica `load_to_bronze(collection, load_type,
-   watermark_field, target_table)` que:
-   a. Gera `start_time` e pega `_ingestion_id` via `get_ingestion_id()`.
-   b. Lê a landing (Parquet) da coleção.
-   c. Se `load_type == "incremental"`: busca `get_last_watermark(collection)`;
-      se vier valor, filtra `campo_watermark > watermark`; se vier `None`,
-      trata como primeira carga (lê tudo).
-   d. Conta `qtd_lida_origem`.
-   e. Monta `json` (documento completo, sem achatar) + `id` (extraído de
-      `_id`, replicado numa coluna própria) + colunas de rastreabilidade
-      (R4).
-   f. Escreve na Bronze via `MERGE INTO` por `id` (idempotência — evita
-      duplicar em reprocessamento, e é uma das estratégias explicitamente
-      aceitas pelo enunciado nas R3, junto com partição sobrescrita).
-   g. Conta `qtd_gravada_destino`, calcula `watermark_final` (maior valor
-      do campo de watermark no lote).
-   h. Chama `log_execution(...)` — sempre, sucesso ou falha (com try/except).
-4. Testar com `users` (full): rodar 2x seguidas, confirmar que não duplica.
-5. Testar com `comments` (incremental), replicando as 3 execuções de
-   evidência do `SEND_WORK.md`:
-   - Execução 1: primeira carga (watermark `None` → lê tudo, ~50.307 docs).
-   - Execução 2: roda de novo sem mudar nada na origem → `qtd_lida_origem = 0`.
-   - Execução 3: pedir pra rodar a extração de novo depois de
-     inserir comentários novos no Mongo com `date` recente (a landing
-     precisa ser atualizada primeiro — a Bronze só enxerga o que está na
-     landing, não o Mongo direto).
-6. Só depois de 4 e 5 validados: expandir a mesma função pras outras
-   coleções (`theaters`, `sessions`, `movies`) como tasks de um job.
-7. Recriar os objetos sem prefixo `dev_` como a "execução real" e coletar
-   as evidências finais em `docs/evidencias/`.
+O bundle tem dois targets que diferem apenas por variáveis — o código dos
+notebooks é idêntico nos dois:
 
-Checklists de apoio: [CHECKLIST_REQUISITOS.md](CHECKLIST_REQUISITOS.md) e
-[CHECKLIST_BOAS_PRATICAS_BRONZE.md](CHECKLIST_BOAS_PRATICAS_BRONZE.md).
+| | `dev` | `prod` |
+|---|---|---|
+| `table_prefix` | `dev_` | vazio |
+| `schedule_pause_status` | `PAUSED` | `UNPAUSED` |
+
+Detalhes de deploy em [jobs/README.md](../jobs/README.md).

@@ -17,6 +17,10 @@ variables:
     description: "PAUSED em dev (não roda sozinho), UNPAUSED em prod"
     default: "PAUSED"
 
+  warehouse_id:
+    description: "SQL Warehouse que alimenta o dashboard de monitoramento"
+    default: "f22b75fcd6f28c2a"
+
 targets:
   dev:
     mode: development

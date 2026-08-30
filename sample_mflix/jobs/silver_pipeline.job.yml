@@ -1,0 +1,122 @@
+resources:
+  jobs:
+    silver_pipeline:
+      name: "${var.table_prefix}silver_pipeline"
+
+      # Dispara quando qualquer tabela da Bronze é atualizada. O job roda
+      # inteiro, mas cada task só processa se a sua coleção tiver linha nova
+      # (filtro por _ingestion_timestamp dentro do notebook) — as demais saem
+      # com 0 registros sem escrever nada.
+      trigger:
+        pause_status: ${var.schedule_pause_status}
+        table_update:
+          table_names:
+            - sample_mflix.bronze.${var.table_prefix}movies
+            - sample_mflix.bronze.${var.table_prefix}comments
+            - sample_mflix.bronze.${var.table_prefix}users
+            - sample_mflix.bronze.${var.table_prefix}theaters
+            - sample_mflix.bronze.${var.table_prefix}sessions
+            - sample_mflix.bronze.${var.table_prefix}embedded_movies
+          condition: ANY_UPDATED
+          min_time_between_triggers_seconds: 300
+          wait_after_last_change_seconds: 60
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 3600
+
+      email_notifications:
+        on_failure:
+          - "${var.notification_email}"
+        on_duration_warning_threshold_exceeded:
+          - "${var.notification_email}"
+        no_alert_for_skipped_runs: true
+
+      parameters:
+        - name: table_prefix
+          default: "${var.table_prefix}"
+        - name: bundle_root
+          default: "${workspace.file_path}"
+
+      tasks:
+        - task_key: start_pipeline
+          condition_task:
+            left: "1"
+            op: EQUAL_TO
+            right: "1"
+
+        - task_key: silver_movies
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/silver_loader.py
+            base_parameters:
+              collection: movies
+          depends_on:
+            - task_key: start_pipeline
+              outcome: "true"
+
+        - task_key: silver_comments
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/silver_loader.py
+            base_parameters:
+              collection: comments
+          depends_on:
+            - task_key: start_pipeline
+              outcome: "true"
+
+        - task_key: silver_users
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/silver_loader.py
+            base_parameters:
+              collection: users
+          depends_on:
+            - task_key: start_pipeline
+              outcome: "true"
+
+        - task_key: silver_theaters
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/silver_loader.py
+            base_parameters:
+              collection: theaters
+          depends_on:
+            - task_key: start_pipeline
+              outcome: "true"
+
+        - task_key: silver_sessions
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/silver_loader.py
+            base_parameters:
+              collection: sessions
+          depends_on:
+            - task_key: start_pipeline
+              outcome: "true"
+
+        - task_key: silver_embedded_movies
+          max_retries: 1
+          notebook_task:
+            notebook_path: ../notebooks/silver_loader.py
+            base_parameters:
+              collection: embedded_movies
+          depends_on:
+            - task_key: start_pipeline
+              outcome: "true"
+
+        - task_key: end_pipeline
+          condition_task:
+            left: "1"
+            op: EQUAL_TO
+            right: "1"
+          depends_on:
+            - task_key: silver_movies
+            - task_key: silver_comments
+            - task_key: silver_users
+            - task_key: silver_theaters
+            - task_key: silver_sessions
+            - task_key: silver_embedded_movies
+          run_if: ALL_DONE

@@ -7,6 +7,7 @@ catalog: sample_mflix
 
 landing_volume: /Volumes/sample_mflix/landing/mongo
 bronze_schema: sample_mflix.bronze
+silver_schema: sample_mflix.silver
 control_table: sample_mflix.bronze.control_ingestion_log
 quarantine_table: quarentena
 
