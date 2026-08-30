@@ -1,6 +1,6 @@
 {
   "movies": {
-    "load_type": "full",
+    "load_type": "incremental",
     "watermark_field": "lastupdated",
     "exclude_fields": [],
     "explode_fields": [
@@ -12,7 +12,7 @@
     ]
   },
   "comments": {
-    "load_type": "full",
+    "load_type": "incremental",
     "watermark_field": "date",
     "exclude_fields": [],
     "explode_fields": []
